@@ -3,9 +3,7 @@ require(readr)
 require(dplyr)
 require(tidyr)
 require(reshape2)
-require(stringr) #to pad CIP with leading zeros; neither formatC nor sprintf worked properly on this list
-# BUT: Beware of the possible scientific notation issue mentioned in this SO post:
-#http://stackoverflow.com/questions/5812493/adding-leading-zeros-using-r
+require(stringr)
 require(ggplot2)
 library(WriteXLS)
 
@@ -13,7 +11,7 @@ library(WriteXLS)
 
 # A. Read industry occupation data
 io <- read_csv("IO_Data_Table_all.csv", col_types = list(
-	"Projected Employment" = col_character(),	#Figure out why these 2 lines of code are needed. Hint trying running this program with out them.
+	"Projected Employment" = col_character(),
 	"Estimated Employment" = col_character()
 	))
 str(io)
@@ -26,19 +24,6 @@ io_soc <- io %>%
 dim(io_soc)
 
 # B. Read in cip - 2, 3, and 4 digit soc files as a list and all related employment and wage info
-
-### The CIP - SOC 2, 3, and 4 digit data are not clean. Many data read in pitfalls.
-# 1. CIP values are missing leading zeros.
-# 2. There are asterisks in the file. These are difficult to handle as NA
-# 3. Numbers that are > 999 have a comma separator in them and they are in quotes.
-# R reads these records as character. The commas have to be removed using regular expressions
-# and then the variables have to be converted to numeric.
-# 4. The variables are inconsistently named, which is bad practice.
-# I would think readr could handle this better by explicitly specifying na 
-# values, but it does not seem to be doing that so well.
-# 5. These issues and the cleaning required to handle them see to be causing R
-# to think that the names attribute for cip_soc_n is NULL, which is a bad thing.
-
 filenames <- list.files("G:\\NSFY\\Tasks1_2\\CIPSOC\\", pattern = "*.csv")
 cip_soc_n <- lapply(filenames, function(x) {
 				read_csv(x, na = c("", "NA"), col_types = list(
@@ -57,7 +42,6 @@ cip_soc_n <- lapply(filenames, function(x) {
 				PS_Completer_15 = col_character()
 				))}
 				)
-#head(cip_soc_n[[1]],50) ## NOTE: leading zeros are missing from the cipcodes
 
 ### Add leading zeros to CIP
 cip_soc_n <- lapply(cip_soc_n, function(x) {
@@ -102,10 +86,6 @@ cip_soc_n_1264 <- lapply(cip_soc_n, function(x) {
 							x[x$H_PCT10 >= 12.64, ]
 							})
 
-#head(cip_soc_n[[1]]) ## problem resolved
-
-
-
 ###---------------------------------------------------------------------------------------------------------------
 
 
@@ -115,13 +95,10 @@ cip_soc_n_1264 <- lapply(cip_soc_n, function(x) {
 
 ### (i) add column names
 colnames(io) <- c("state","naics","industry","soc","occupation","period","estEmp","projEmp","pctAllJobsinInd","pctAllJobsinOcc")
-#colnames(io) <- c(naics,industry,soc,occupation,period,estEmp,projEmp) example for class
-#2nd line of code is wrong because it tries to assign OBJECTS to create a vector of names for io.
 
 ###-------------
 
 ### (ii) Remove the commas before trying to convert to numeric
-#Show with and without name changes.
 io <- data.frame(
 	io[,2:5], 
 	estEmp = gsub( ",", "", io$estEmp), 
@@ -130,13 +107,10 @@ io <- data.frame(
 
 ###-------------
 
-### (iii) Convert estEmp and projEmp to integer -- for class: try doing the below first (before removing the commas)
+### (iii) Convert estEmp and projEmp to integer
 io$estEmp <- as.integer(io$estEmp)
 io$projEmp <- as.integer(io$projEmp)
 str(io)
-
-#All in one line:
-#io <- data.frame(io[,1:5], estEmp = as.integer(gsub( ",", "", io$estEmp)), projEmp = as.integer(gsub( ",", "", io$projEmp)), stringsAsFactors = FALSE)
 
 ### (iv) Liswise delete
 
@@ -148,7 +122,6 @@ dim(io)
 
 ### (v) Remove industry - occupations with employment < 10
 
-#io_gt10 <- io[estEmp > 10, ] returns an error, because there is no object named estEmp, only io$estEmp
 io_gt10 <- io[io$projEmp > 10, ]
 io_gt10$kis <- ifelse(substr(io_gt10$naics,1,2) == '23', "Construction",
 				ifelse(substr(io_gt10$naics,1,2) %in% c('31','32','33'), "Manufacturing",
@@ -160,7 +133,6 @@ io_gt10$kis <- ifelse(substr(io_gt10$naics,1,2) == '23', "Construction",
 				ifelse(substr(io_gt10$naics,1,3) %in% c('334','339') | substr(io_gt10$naics,1,4) %in% c('5413','5416','5417','5419','621'), "Life Sciences","Non-Key Industry"
 				))))))))
 io_gt10$kis_or_not <- ifelse(io_gt10$kis == "Non-Key Industry", "Not Key Industry", "Key Industry")
-#io_gt10 <- io_gt10[io_gt10$kis != "", ] totals by occupation are not global; they are just within the 7 key industries.
 table(io_gt10$kis_or_not)
 dim(io_gt10)
 
@@ -195,13 +167,7 @@ soc_emp_in_ind <-
 			mutate(percent_of_max_jobs_in_occ = round((pct_jobs_in_occ/max_pct_of_all_jobs_in_occ)*1000),
 			percent_of_max_jobs_in_ind = round((pct_jobs_in_ind/max_pct_of_all_jobs_in_ind)*1000))%>%
 			mutate(percent_of_jobs = ifelse(percent_of_max_jobs_in_occ >= percent_of_max_jobs_in_ind, percent_of_max_jobs_in_occ, percent_of_max_jobs_in_ind))
-#### May be able to do a different calculation, based % jobs in occupation
 
-### Check distribution of max jobs in each occ and each ind to make sure they are evenly distributed
-#table(soc_emp_in_ind$kis, soc_emp_in_ind$max_pct_of_all_jobs_in_ind)
-#table(soc_emp_in_ind$soc, soc_emp_in_ind$max_pct_of_all_jobs_in_occ)
-
-#Needs to be done by industry!! :
 socind_list <- list()
 for(j in soc_emp_in_ind$kis) {
 	socind_list[[j]] <- soc_emp_in_ind[soc_emp_in_ind$kis == j, ]
@@ -209,40 +175,39 @@ for(j in soc_emp_in_ind$kis) {
 str(socind_list)
 
 ### SET Thresholds
-## Could NOT figure out how to do this as a nested list: si_list <- lapply(socind_list, lapply, function(x) {
-Construction <- list()
+Construction <- vector(mode = "list", length = 1000)
 for(i in 1:1000) {
 	Construction[[i]] <- data.frame(socind_list[[1]][socind_list[[1]]$percent_of_jobs >= i, ], threshold = i)
 }
-Finance <- list()
+Finance <- vector(mode = "list", length = 1000)
 for(i in 1:1000) {
 	Finance[[i]] <- data.frame(socind_list[[2]][socind_list[[2]]$percent_of_jobs >= i, ], threshold = i)
 }
-Healthcare <- list()
+Healthcare <- vector(mode = "list", length = 1000)
 for(i in 1:1000) {
 	Healthcare[[i]] <- data.frame(socind_list[[3]][socind_list[[3]]$percent_of_jobs >= i, ], threshold = i)
 }
-Hospitality <- list()
+Hospitality <- vector(mode = "list", length = 1000)
 for(i in 1:1000) {
 	Hospitality[[i]] <- data.frame(socind_list[[4]][socind_list[[4]]$percent_of_jobs >= i, ], threshold = i)
 }
-Information <- list()
+Information <- vector(mode = "list", length = 1000)
 for(i in 1:1000) {
 	Information[[i]] <- data.frame(socind_list[[5]][socind_list[[5]]$percent_of_jobs >= i, ], threshold = i)
 }
-LifeSciences <- list()
+LifeSciences <- vector(mode = "list", length = 1000)
 for(i in 1:1000) {
 	LifeSciences[[i]] <- data.frame(socind_list[[6]][socind_list[[6]]$percent_of_jobs >= i, ], threshold = i)
 }
-Manufacturing <- list()
+Manufacturing <- vector(mode = "list", length = 1000)
 for(i in 1:1000) {
 	Manufacturing[[i]] <- data.frame(socind_list[[7]][socind_list[[7]]$percent_of_jobs >= i, ], threshold = i)
 }
-NonKeyIndustry <- list()
+NonKeyIndustry <- vector(mode = "list", length = 1000)
 for(i in 1:1000) {
 	NonKeyIndustry[[i]] <- data.frame(socind_list[[8]][socind_list[[8]]$percent_of_jobs >= i, ], threshold = i)
 }
-TLD <- list()
+TLD <- vector(mode = "list", length = 1000)
 for(i in 1:1000) {
 	TLD[[i]] <- data.frame(socind_list[[9]][socind_list[[9]]$percent_of_jobs >= i, ], threshold = i)
 }
@@ -269,7 +234,7 @@ write.csv(all_25_df, file = "all_25_soc.csv", row.names = FALSE)
 write.csv(all_37.5_df, file = "all_375_soc.csv", row.names = FALSE)
 
 
-### I now have nine lists -- one per key industry sector plus on for all industries combined that are not key industries.
+### Now have nine lists -- one per key industry sector plus on for all industries combined that are not key industries.
 
 curve_list <- list(Construction, Finance, Healthcare, Hospitality, Information, LifeSciences, Manufacturing, TLD, NonKeyIndustry)
 
@@ -277,7 +242,7 @@ curve_list <- list(Construction, Finance, Healthcare, Hospitality, Information, 
 curve_list2 <- curve_list[!sapply(curve_list, is.null)]
 head(curve_list2[[8]][[600]])
 
-#### Now I need to use SOC to get the CIP and the number of students enrolled from the enrollment file.
+#### Now use SOC to get the CIP and the number of students enrolled from the enrollment file.
 
 #Prepare curve_list2 for merge with CIP - three-digit SOC file.
 #Add a SOC.3 variable to curve_list2
@@ -291,7 +256,7 @@ head(curve_list2[[8]][[600]])
 cip_soc_3 <- list(cip_soc_n[[2]][, c(1,2,4,5,6)],cip_soc_n_1264[[2]][, c(1,2,4,5,6)])
 #Recode SOC.3 from integer to character
 cip_soc_3 <- lapply(cip_soc_3, function(x) data.frame(x[1:3], SOC.3 = as.character(x[,4]), x[5], stringsAsFactors = FALSE))
-###The lapply initially screwed up SOC.3.  Note the subtle difference in how I have to refer to the 4th variable versus the 5th variable!!!
+
 names(cip_soc_3) <- c("all","living_wage")
 str(cip_soc_3)
 # Create a string variable that is a concatenation of CIP and SOC.3
@@ -310,7 +275,7 @@ cip_soc_3_tot <- lapply(cip_soc_3_unique, function(x) {
 		select(CIP, total_enrollment)
 		})
 str(cip_soc_3_tot)
-##Use lapply to merge a list with a data frame (Not Map or mapply!)
+
 cip_soc_3_merge <- lapply(cip_soc_3_by_cipsoc3, function(x) left_join(x, cip_soc_3_tot$all, by = "CIP"))
 str(cip_soc_3_merge)
 str(cip_soc_3_by_cipsoc3) 
@@ -326,21 +291,6 @@ head(curve_list3[[7]][[400]],30)
 str(curve_list3[[7]][[400]])
 
 curve_list4 <- lapply(curve_list3, lapply, function(x) x[!duplicated(x[c(15)]),])
-
-###-----------------------------------------------------------------------------------------------------------
-
-### DETOUR: Create list of CIP - SOC - NAICS for DOE
-#a <- do.call(rbind, curve_list4)
-#b <- do.call(rbind, a)
-#d <- b[b$threshold %% 10 == 0, c(1,2,3, 13:15)]
-#Convert threshold and percent of jobs to percent:
-#d$threshold <- d$threshold/10 
-#d$percent_of_jobs <- d$percent_of_jobs/10
-
-#d10 <- d[d$threshold == 10, ]
-#d25 <- d[d$threshold == 25, ]
-#d37 <- d[d$threshold == 37, ]
-
 
 ###-------------------------------------------------------------------------------------------------------------
 ### INSERT THRESHOLD IN LINE BELOW
